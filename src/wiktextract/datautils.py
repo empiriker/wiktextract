@@ -6,6 +6,7 @@ import re
 from collections import defaultdict
 from functools import lru_cache, partial
 from typing import Any, Dict, Iterable, List, Tuple
+from wiktextract.extractor.es.models import BaseModelWrap
 
 from wiktextract.wxr_context import WiktextractContext
 
@@ -30,7 +31,7 @@ def data_append(
     """Appends ``value`` under ``key`` in the dictionary ``data``.  The key
     is created if it does not exist."""
     assert isinstance(wxr, WiktextractContext)
-    assert isinstance(data, dict)
+    assert isinstance(data, dict) or isinstance(data, BaseModelWrap)
     assert isinstance(key, str)
 
     if key in str_keys:
@@ -69,7 +70,8 @@ def make_split_re(seps):
     """Cached helper function for split_at_comma_semi."""
 
 
-def split_at_comma_semi(text: str, separators=(",", ";", "，", "،"), extra=()
+def split_at_comma_semi(
+    text: str, separators=(",", ";", "，", "،"), extra=()
 ) -> List[str]:
     """Splits the text at commas and semicolons, unless they are inside
     parenthesis.  ``separators`` is default separators (setting it eliminates
