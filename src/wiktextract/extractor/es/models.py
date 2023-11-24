@@ -1,9 +1,8 @@
-from typing import Optional
 import json
-
 import logging
+from typing import List, Optional
 
-from pydantic import BaseModel, Field, model_validator, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from pydantic.json_schema import GenerateJsonSchema
 
 from wiktextract.wxr_context import WiktextractContext
@@ -84,6 +83,42 @@ class Sense(LoggingExtraFieldsModel):
     )
 
 
+class Spelling(LoggingExtraFieldsModel):
+    alternative: Optional[str] = Field(
+        default=None, description="Alternative spelling with same pronunciation"
+    )
+    note: Optional[str] = Field(
+        default=None, description="Note regarding alternative spelling"
+    )
+    same_pronunciation: Optional[bool] = Field(
+        default=None,
+        description="Whether the alternative spelling has the same pronunciation as the default spelling",
+    )
+
+
+class Sound(LoggingExtraFieldsModel):
+    ipa: List[str] = Field(
+        default=[], description="International Phonetic Alphabet"
+    )
+    phonetic_transcription: List[str] = Field(
+        default=[], description="Phonetic transcription, less exact than IPA."
+    )
+    audio: List[str] = Field(default=[], description="Audio file name")
+    wav_url: List[str] = Field(default=[])
+    ogg_url: List[str] = Field(default=[])
+    mp3_url: List[str] = Field(default=[])
+    flac_url: List[str] = Field(default=[])
+    roman: List[str] = Field(
+        default=[], description="Translitaration to Roman characters"
+    )
+    syllabic: List[str] = Field(
+        default=[], description="Syllabic transcription"
+    )
+    tag: List[str] = Field(
+        default=[], description="Specifying the variant of the pronunciation"
+    )
+
+
 class WordEntry(LoggingExtraFieldsModel):
     """WordEntry is a dictionary containing lexical information of a single word extracted from Wiktionary with wiktextract."""
 
@@ -101,6 +136,8 @@ class WordEntry(LoggingExtraFieldsModel):
         default=[],
         description="list of non-disambiguated categories for the word",
     )
+    sounds: Optional[list[Sound]] = []
+    spellings: Optional[list[Spelling]] = []
 
 
 if __name__ == "__main__":
