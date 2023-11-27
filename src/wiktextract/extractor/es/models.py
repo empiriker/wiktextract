@@ -62,6 +62,36 @@ class LoggingExtraFieldsModel(BaseModelWrap):
         return values
 
 
+class Reference(LoggingExtraFieldsModel):
+    url: Optional[str] = Field(default=None, description="A web link")
+    first_name: Optional[str] = Field(
+        default=None, description="Author's first name"
+    )
+    last_name: Optional[str] = Field(
+        default=None, description="Author's last name"
+    )
+    title: Optional[str] = Field(
+        default=None, description="Title of the reference"
+    )
+    pages: Optional[str] = Field(default=None, description="Page numbers")
+    year: Optional[str] = Field(default=None, description="Year of publication")
+    date: Optional[str] = Field(default=None, description="Date of publication")
+    journal: Optional[str] = Field(default=None, description="Name of journal")
+    chapter: Optional[str] = Field(default=None, description="Chapter name")
+    place: Optional[str] = Field(
+        default=None, description="Place of publication"
+    )
+    editor: Optional[str] = Field(default=None, description="Editor")
+
+
+class Example(LoggingExtraFieldsModel):
+    text: str = Field(description="Example usage sentence")
+    translation: Optional[str] = Field(
+        default=None, description="Spanish translation of the example sentence"
+    )
+    ref: Optional["Reference"] = Field(default=None, description="")
+
+
 class Sense(LoggingExtraFieldsModel):
     glosses: list[str] = Field(
         description="list of gloss strings for the word sense (usually only one). This has been cleaned, and should be straightforward text with no tagging."
@@ -74,7 +104,9 @@ class Sense(LoggingExtraFieldsModel):
         default=[],
         description="list of sense-disambiguated category names extracted from (a subset) of the Category links on the page",
     )
-    # examples: list[SenseExample] = []
+    examples: list["Example"] = Field(
+        default=[], description="List of examples"
+    )
     subsenses: list["Sense"] = Field(
         default=[], description="List of subsenses"
     )

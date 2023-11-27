@@ -1,14 +1,19 @@
 import copy
 import logging
+import re
 from collections import defaultdict
 from typing import Dict, List
 
 from wikitextprocessor import NodeKind, WikiNode
+from wikitextprocessor.parser import WikiNodeChildrenList
 
 from wiktextract.datautils import append_base_data
+from wiktextract.extractor.es.example import extract_example
 from wiktextract.extractor.es.gloss import extract_gloss
+from wiktextract.extractor.es.linkage import extract_linkage
 from wiktextract.extractor.es.models import PydanticLogger, WordEntry
 from wiktextract.extractor.es.pronunciation import process_pron_graf_template
+from wiktextract.extractor.es.sense_data import process_sense_data_list
 from wiktextract.page import clean_node
 from wiktextract.wxr_context import WiktextractContext
 
@@ -25,6 +30,36 @@ PANEL_PREFIXES = set()
 ADDITIONAL_EXPAND_TEMPLATES = set()
 
 
+def parse_pos_or_etymology_section(
+    wxr: WiktextractContext,
+    page_data: List[Dict],
+    base_data: Dict,
+    level_node: WikiNode,
+):
+    next_level_kind = (
+        NodeKind.LEVEL3
+        if level_node.kind == NodeKind.LEVEL2
+        else NodeKind.LEVEL4
+    )
+
+    for sub_level_node in level_node.find_child(next_level_kind):
+        parse_section(wxr, page_data, base_data, sub_level_node)
+
+    for not_sub_level_node in level_node.invert_find_child(next_level_kind):
+        if (
+            isinstance(not_sub_level_node, WikiNode)
+            and not_sub_level_node.kind == NodeKind.TEMPLATE
+            and not_sub_level_node.template_name == "pron-graf"
+        ):
+            if wxr.config.capture_pronunciation:
+                process_pron_graf_template(wxr, page_data, not_sub_level_node)
+        else:
+            wxr.wtp.debug(
+                f"Found unexpected child in level node {level_node.largs}: {not_sub_level_node}",
+                sortid="extractor/es/page/parse_page/80",
+            )
+
+
 def parse_section(
     wxr: WiktextractContext,
     page_data: List[Dict],
@@ -39,18 +74,117 @@ def parse_section(
     for level_node_template in level_node.find_content(NodeKind.TEMPLATE):
         pos_template_name = level_node_template.template_name
 
-    if subtitle in wxr.config.OTHER_SUBTITLES["ignored_sections"]:
+    if re.match(r"Etimología \d+", subtitle):
+        parse_pos_or_etymology_section(wxr, page_data, base_data, level_node)
+
+    elif subtitle in wxr.config.OTHER_SUBTITLES["ignored_sections"]:
         pass
 
     elif pos_template_name and pos_template_name in wxr.config.POS_SUBTITLES:
         process_pos_block(
             wxr, page_data, base_data, level_node, pos_template_name, subtitle
         )
+    elif subtitle in wxr.config.OTHER_SUBTITLES["etymology"]:
+        if wxr.config.capture_etymologies:
+            # XXX: Extract etymology
+            pass
+    elif subtitle in wxr.config.OTHER_SUBTITLES["translations"]:
+        if wxr.config.capture_translations:
+            # XXX: Extract translations
+            pass
     else:
         wxr.wtp.debug(
             f"Unprocessed section: {subtitle}",
             sortid="extractor/es/page/parse_section/48",
         )
+
+
+def process_sense_children(
+    wxr: WiktextractContext,
+    page_data: List[Dict],
+    sense_children: WikiNodeChildrenList,
+) -> None:
+    """Mainly additional information to a sense is given via special templates or lists. However, sometimes string nodes are used to add information to a preceeding template or list.
+
+    This function collects the nodes that form a group and calls the relevant methods for extraction.
+    """
+
+    def starts_new_group(child: WikiNode) -> bool:
+        # Nested function for readibility
+        return isinstance(child, WikiNode) and (
+            child.kind == NodeKind.TEMPLATE
+            or child.kind == NodeKind.LIST
+            or child.kind == NodeKind.LINK
+        )
+
+    def process_group(
+        wxr: WiktextractContext,
+        page_data: List[Dict],
+        group: WikiNodeChildrenList,
+    ) -> None:
+        # Nested function for readibility
+
+        if len(group) == 0:
+            return
+        elif (
+            isinstance(group[0], WikiNode)
+            and group[0].kind == NodeKind.TEMPLATE
+        ):
+            template_name = group[0].template_name
+
+            if template_name == "clear":
+                return
+            elif (
+                template_name.removesuffix("s") in wxr.config.LINKAGE_SUBTITLES
+            ):
+                extract_linkage(wxr, page_data, group)
+            elif template_name in ["ejemplo", "ejemplos", "ejemplo_y_trad"]:
+                extract_example(wxr, page_data[-1].senses[-1], group)
+            elif template_name == "uso":
+                # XXX: Extract usage note
+                pass
+            elif template_name == "ámbito":
+                # XXX Extract scope note
+                pass
+            else:
+                wxr.wtp.debug(
+                    f"Found unexpected group specifying a sense: {group}, head template {template_name}",
+                    sortid="extractor/es/page/process_group/102",
+                )
+
+        elif isinstance(group[0], WikiNode) and group[0].kind == NodeKind.LIST:
+            list_node = group[
+                0
+            ]  # List groups seem to not be followed by string nodes. We, therefore, only process the list_node.
+            process_sense_data_list(wxr, page_data[-1].senses[-1], list_node)
+
+        elif (
+            isinstance(child, WikiNode)
+            and child.kind == NodeKind.LINK
+            and "Categoría" in child.largs[0][0]
+        ):
+            # Extracte sense categories
+            clean_node(
+                wxr,
+                page_data[-1].senses[-1],
+                child,
+            )
+
+        else:
+            wxr.wtp.debug(
+                f"Found unexpected group specifying a sense: {group}",
+                sortid="extractor/es/page/process_group/117",
+            )
+
+    group: WikiNodeChildrenList = []
+
+    for child in sense_children:
+        if starts_new_group(child):
+            process_group(wxr, page_data, group)
+            group = []
+        group.append(child)
+
+    process_group(wxr, page_data, group)
 
 
 def process_pos_block(
@@ -64,30 +198,56 @@ def process_pos_block(
     pos_type = wxr.config.POS_SUBTITLES[pos_template_name]["pos"]
     append_base_data(page_data, "pos", pos_type, base_data)
     page_data[-1]["pos_title"] = pos_title
+
     child_nodes = list(pos_level_node.filter_empty_str_child())
+    sense_children: WikiNodeChildrenList = (
+        []
+    )  # All non-gloss nodes that add additional information to a sense
 
     for child in child_nodes:
         if (
             isinstance(child, WikiNode)
-            and child.kind == NodeKind.TEMPLATE
-            and (
-                "inflect" in child.template_name
-                or "v.conj" in child.template_name
-            )
-        ):
-            # XXX: Extract forms
-            pass
-        elif (
-            isinstance(child, WikiNode)
             and child.kind == NodeKind.LIST
             and child.sarg == ";"
         ):
+            # Consume sense_children of previous sense and extract gloss of new sense
+            process_sense_children(wxr, page_data, sense_children)
+            sense_children = []
+
             extract_gloss(wxr, page_data, child)
 
+        elif page_data[-1].senses:
+            sense_children.append(child)
+
         else:
-            # XXX: Extract data
-            pass
-    pass
+            # Process nodes before first sense
+            if (
+                isinstance(child, WikiNode)
+                and child.kind == NodeKind.TEMPLATE
+                and (
+                    "inflect" in child.template_name
+                    or "v.conj" in child.template_name
+                )
+            ):
+                # XXX: Extract forms
+                pass
+
+            elif (
+                isinstance(child, WikiNode)
+                and child.kind == NodeKind.LINK
+                and "Categoría" in child.largs[0][0]
+            ):
+                clean_node(
+                    wxr,
+                    page_data[-1],
+                    child,
+                )
+            else:
+                wxr.wtp.debug(
+                    f"Found unexpected node in pos_block: {child}",
+                    sortid="extractor/es/page/process_pos_block/184",
+                )
+    process_sense_children(wxr, page_data, sense_children)
 
 
 def parse_page(
@@ -132,25 +292,8 @@ def parse_page(
                 )
                 base_data.update(categories_and_links)
                 page_data.append(copy.deepcopy(base_data))
-                for level3_node in level2_node.find_child(NodeKind.LEVEL3):
-                    parse_section(wxr, page_data, base_data, level3_node)
-
-                for not_level3_node in level2_node.invert_find_child(
-                    NodeKind.LEVEL3
-                ):
-                    if (
-                        isinstance(not_level3_node, WikiNode)
-                        and not_level3_node.kind == NodeKind.TEMPLATE
-                        and not_level3_node.template_name == "pron-graf"
-                    ):
-                        if wxr.config.capture_pronunciation:
-                            process_pron_graf_template(
-                                wxr, page_data, not_level3_node
-                            )
-                    else:
-                        wxr.wtp.debug(
-                            f"Found unexpected child in level 2 'lengua' node: {not_level3_node}",
-                            sortid="extractor/es/page/parse_page/80",
-                        )
+                parse_pos_or_etymology_section(
+                    wxr, page_data, base_data, level2_node
+                )
 
     return [d.model_dump(exclude_defaults=True) for d in page_data]
