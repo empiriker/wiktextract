@@ -62,6 +62,25 @@ class LoggingExtraFieldsModel(BaseModelWrap):
         return values
 
 
+class Translation(LoggingExtraFieldsModel):
+    word: str = Field(description="Translation term")
+    lang_code: str = Field(
+        description="Wiktionary language code of the translation term"
+    )
+    senseids: List[str] = Field(
+        default=[],
+        description="List of senseids where this translation applies",
+    )
+    tags: List[str] = Field(
+        default=[],
+        description="Tags specifying the translated term, usually gender information",
+    )
+    notes: List[str] = Field(default=[], description="A list of notes")
+    roman: Optional[str] = Field(
+        default=None, description="Transliteration in roman characters"
+    )
+
+
 class Reference(LoggingExtraFieldsModel):
     url: Optional[str] = Field(default=None, description="A web link")
     first_name: Optional[str] = Field(
@@ -170,6 +189,7 @@ class WordEntry(LoggingExtraFieldsModel):
     )
     sounds: Optional[list[Sound]] = []
     spellings: Optional[list[Spelling]] = []
+    translations: Optional[list[Translation]] = []
 
 
 if __name__ == "__main__":

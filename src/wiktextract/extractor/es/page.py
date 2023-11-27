@@ -14,6 +14,7 @@ from wiktextract.extractor.es.linkage import extract_linkage
 from wiktextract.extractor.es.models import PydanticLogger, WordEntry
 from wiktextract.extractor.es.pronunciation import process_pron_graf_template
 from wiktextract.extractor.es.sense_data import process_sense_data_list
+from wiktextract.extractor.es.translation import extract_translation
 from wiktextract.page import clean_node
 from wiktextract.wxr_context import WiktextractContext
 
@@ -32,8 +33,8 @@ ADDITIONAL_EXPAND_TEMPLATES = set()
 
 def parse_pos_or_etymology_section(
     wxr: WiktextractContext,
-    page_data: List[Dict],
-    base_data: Dict,
+    page_data: List[WordEntry],
+    base_data: WordEntry,
     level_node: WikiNode,
 ):
     next_level_kind = (
@@ -62,8 +63,8 @@ def parse_pos_or_etymology_section(
 
 def parse_section(
     wxr: WiktextractContext,
-    page_data: List[Dict],
-    base_data: Dict,
+    page_data: List[WordEntry],
+    base_data: WordEntry,
     level_node: WikiNode,
 ) -> None:
     # Page Structure: https://es.wiktionary.org/wiki/Wikcionario:Estructura
@@ -90,8 +91,11 @@ def parse_section(
             pass
     elif subtitle in wxr.config.OTHER_SUBTITLES["translations"]:
         if wxr.config.capture_translations:
-            # XXX: Extract translations
-            pass
+            for template_node in level_node.find_child_recursively(
+                NodeKind.TEMPLATE
+            ):
+                if template_node.template_name == "t+":
+                    extract_translation(wxr, page_data, template_node)
     else:
         wxr.wtp.debug(
             f"Unprocessed section: {subtitle}",
@@ -101,7 +105,7 @@ def parse_section(
 
 def process_sense_children(
     wxr: WiktextractContext,
-    page_data: List[Dict],
+    page_data: List[WordEntry],
     sense_children: WikiNodeChildrenList,
 ) -> None:
     """Mainly additional information to a sense is given via special templates or lists. However, sometimes string nodes are used to add information to a preceeding template or list.
@@ -119,7 +123,7 @@ def process_sense_children(
 
     def process_group(
         wxr: WiktextractContext,
-        page_data: List[Dict],
+        page_data: List[WordEntry],
         group: WikiNodeChildrenList,
     ) -> None:
         # Nested function for readibility
