@@ -10,7 +10,10 @@ from wikitextprocessor.parser import WikiNodeChildrenList
 from wiktextract.datautils import append_base_data
 from wiktextract.extractor.es.example import extract_example
 from wiktextract.extractor.es.gloss import extract_gloss
-from wiktextract.extractor.es.linkage import extract_linkage
+from wiktextract.extractor.es.linkage import (
+    extract_linkage,
+    process_linkage_template,
+)
 from wiktextract.extractor.es.models import PydanticLogger, WordEntry
 from wiktextract.extractor.es.pronunciation import process_pron_graf_template
 from wiktextract.extractor.es.sense_data import process_sense_data_list
@@ -68,14 +71,14 @@ def parse_section(
     level_node: WikiNode,
 ) -> None:
     # Page Structure: https://es.wiktionary.org/wiki/Wikcionario:Estructura
-    subtitle = clean_node(wxr, page_data[-1], level_node.largs)
+    subtitle = clean_node(wxr, page_data[-1], level_node.largs).lower()
     wxr.wtp.start_subsection(subtitle)
 
     pos_template_name = None
     for level_node_template in level_node.find_content(NodeKind.TEMPLATE):
         pos_template_name = level_node_template.template_name
 
-    if re.match(r"Etimología \d+", subtitle):
+    if re.match(r"etimología \d+", subtitle):
         parse_pos_or_etymology_section(wxr, page_data, base_data, level_node)
 
     elif subtitle in wxr.config.OTHER_SUBTITLES["ignored_sections"]:
@@ -96,6 +99,11 @@ def parse_section(
             ):
                 if template_node.template_name == "t+":
                     extract_translation(wxr, page_data, template_node)
+    elif subtitle in wxr.config.LINKAGE_SUBTITLES:
+        linkage_type = wxr.config.LINKAGE_SUBTITLES[subtitle]
+
+        extract_linkage(wxr, page_data[-1], level_node, linkage_type)
+
     else:
         wxr.wtp.debug(
             f"Unprocessed section: {subtitle}",
@@ -141,7 +149,9 @@ def process_sense_children(
             elif (
                 template_name.removesuffix("s") in wxr.config.LINKAGE_SUBTITLES
             ):
-                extract_linkage(wxr, page_data, group)
+                process_linkage_template(
+                    wxr, page_data[-1].senses[-1], group[0]
+                )
             elif template_name in ["ejemplo", "ejemplos", "ejemplo_y_trad"]:
                 extract_example(wxr, page_data[-1].senses[-1], group)
             elif template_name == "uso":

@@ -62,6 +62,14 @@ class LoggingExtraFieldsModel(BaseModelWrap):
         return values
 
 
+class Linkage(LoggingExtraFieldsModel):
+    word: str
+    note: Optional[str] = Field(default=None)
+    alternative_spelling: Optional[str] = Field(
+        default=None, description="Alternative spelling of the word"
+    )
+
+
 class Translation(LoggingExtraFieldsModel):
     word: str = Field(description="Translation term")
     lang_code: str = Field(
@@ -126,12 +134,21 @@ class Sense(LoggingExtraFieldsModel):
     examples: list["Example"] = Field(
         default=[], description="List of examples"
     )
-    subsenses: list["Sense"] = Field(
-        default=[], description="List of subsenses"
-    )
+    # subsenses: list["Sense"] = Field(
+    #     default=[], description="List of subsenses"
+    # )
     senseid: Optional[int] = Field(
         default=None, description="Sense number used in Wiktionary"
     )
+    antonyms: Optional[list[Linkage]] = []
+    compounds: Optional[list[Linkage]] = []
+    derived: Optional[list[Linkage]] = []
+    hyponyms: Optional[list[Linkage]] = []
+    hypernyms: Optional[list[Linkage]] = []
+    idioms: Optional[list[Linkage]] = []
+    meronyms: Optional[list[Linkage]] = []
+    related: Optional[list[Linkage]] = []
+    synonyms: Optional[list[Linkage]] = []
 
 
 class Spelling(LoggingExtraFieldsModel):
@@ -190,6 +207,15 @@ class WordEntry(LoggingExtraFieldsModel):
     sounds: Optional[list[Sound]] = []
     spellings: Optional[list[Spelling]] = []
     translations: Optional[list[Translation]] = []
+    antonyms: Optional[list[Linkage]] = []
+    compounds: Optional[list[Linkage]] = []
+    derived: Optional[list[Linkage]] = []
+    hyponyms: Optional[list[Linkage]] = []
+    hypernyms: Optional[list[Linkage]] = []
+    idioms: Optional[list[Linkage]] = []
+    meronyms: Optional[list[Linkage]] = []
+    related: Optional[list[Linkage]] = []
+    synonyms: Optional[list[Linkage]] = []
 
 
 if __name__ == "__main__":
